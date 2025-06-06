@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
         workDuration: 25 * 60, // default 25 minutes in seconds
         breakDuration: 5 * 60, // default 5 minutes in seconds
         blacklist: [],
-        blockingMode: 'redirect' // 'redirect' or 'cover'
+        blockingMode: 'cover' // 'redirect' or 'cover'
     };
 
     let popupTimerInterval; // Variable to hold the setInterval ID for the local popup timer

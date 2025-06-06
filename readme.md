@@ -1,4 +1,8 @@
 # Pomodoro Timer
+![Screenshot-1](images/screenshot-1.png)
+
+![Screenshot-2](images/screenshot-2.png)
+
 
 ## About
 This browser extension implements a simple and minimalistic Pomodoro timer.

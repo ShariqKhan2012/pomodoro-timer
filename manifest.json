@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Brave Pomodoro Timer",
+  "name": "Pomodoro Timer by Shariq Hasan Khan",
   "version": "1.0",
   "description": "A Pomodoro timer extension for Brave browser with site blocking.",
   "permissions": [
