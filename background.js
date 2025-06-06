@@ -18,6 +18,8 @@ let blacklist = [
 ];
 let blockingMode = 'redirect'; // 'redirect' or 'cover'
 
+let backgroundTimerInterval; // New variable for the background script's timer interval
+
 // --- Offscreen Document Management for Audio Playback ---
 const OFFSCREEN_DOCUMENT_PATH = 'offscreen.html';
 
@@ -85,6 +87,42 @@ function calculateRemainingTime() {
     }
 }
 
+// --- Background Timer for Badge Update ---
+/**
+ * Starts the background interval to update the badge and check timer status.
+ */
+function startBackgroundTimer() {
+    if (backgroundTimerInterval) {
+        clearInterval(backgroundTimerInterval);
+    }
+    backgroundTimerInterval = setInterval(() => {
+        if (timerRunning && !timerPaused) {
+            updateBadge();
+            const remaining = calculateRemainingTime();
+            if (remaining <= 0) {
+                console.log("Pomodoro: Background timer detected 0 remaining time, stopping interval and handling mode end.");
+                stopBackgroundTimer();
+                handleModeEnd(); // Trigger mode end if timer runs out via background check
+            }
+        } else {
+            stopBackgroundTimer(); // Stop if timer is not running or is paused
+        }
+    }, 1000); // Update every second
+    console.log("Pomodoro: Background timer interval started.");
+}
+
+/**
+ * Stops the background interval.
+ */
+function stopBackgroundTimer() {
+    if (backgroundTimerInterval) {
+        clearInterval(backgroundTimerInterval);
+        backgroundTimerInterval = null;
+    }
+    console.log("Pomodoro: Background timer interval stopped.");
+}
+
+
 // --- Storage Management ---
 /**
  * Loads the timer state from chrome.storage.local.
@@ -126,7 +164,11 @@ async function loadState() {
                     applyOverlaysToOpenBlacklistedTabs();
                 }
             }
+            startBackgroundTimer(); // Start background timer for badge update
+        } else {
+            stopBackgroundTimer(); // Ensure background timer is stopped if not running
         }
+
 
         updateBadge(); // Update badge based on loaded state
         updatePopup(); // Ensure popup gets the latest state upon load
@@ -180,6 +222,7 @@ async function startTimer() {
     applyOverlaysToOpenBlacklistedTabs(); // Apply overlays to currently open blacklisted tabs
     
     updatePopup(); // Explicitly call updatePopup AFTER all changes are applied
+    startBackgroundTimer(); // Start background timer for badge update
 }
 
 /**
@@ -207,6 +250,7 @@ async function pauseTimer() {
     clearAllBlockOverlays(); // Remove any active overlays
     console.log("Pomodoro: pauseTimer - State after pause:", {timerRunning, timerPaused, currentMode, initialModeDuration, timerModeStartTime, calculatedRemaining: calculateRemainingTime()});
     updatePopup(); // Explicitly call updatePopup AFTER all changes are applied
+    stopBackgroundTimer(); // Stop background timer on pause
 }
 
 /**
@@ -228,6 +272,7 @@ async function resumeTimer() {
     }
     console.log("Pomodoro: resumeTimer - State after resume:", {timerRunning, timerPaused, currentMode, initialModeDuration, timerModeStartTime, calculatedRemaining: calculateRemainingTime()});
     updatePopup(); // Explicitly call updatePopup AFTER all changes are applied
+    startBackgroundTimer(); // Start background timer on resume
 }
 
 /**
@@ -247,6 +292,7 @@ async function stopTimer() {
     await removeDeclarativeNetRequestRules(); // Remove blocking rules
     clearAllBlockOverlays(); // Remove any active overlays
     updatePopup(); // Explicitly call updatePopup AFTER all changes are applied
+    stopBackgroundTimer(); // Stop background timer on stop
 }
 
 /**
@@ -298,6 +344,7 @@ async function handleModeEnd() {
         updateBadge();
         updatePopup(); // Notify popup of state change
         saveState();
+        startBackgroundTimer(); // Start background timer for break
     } else { // currentMode === 'break'
         notificationOptions.message = 'Break session ended! Ready for next work session?';
         notificationOptions.buttons = [
@@ -315,6 +362,7 @@ async function handleModeEnd() {
         updateBadge();
         updatePopup(); // Notify popup of state change
         saveState();
+        stopBackgroundTimer(); // Stop background timer
     }
 }
 
@@ -354,6 +402,7 @@ chrome.notifications.onButtonClicked.addListener(async (notificationId, buttonIn
             updateBadge();
             updatePopup(); // Notify popup of state change
             saveState();
+            startBackgroundTimer(); // Start background timer for extended break
         } else if (buttonIndex === 1) { // Start Work
             console.log("Pomodoro: Notification button: Start Work clicked.");
             chrome.notifications.clear(notificationId); // Clear the notification
@@ -639,7 +688,7 @@ function updateBadge() {
     if (timerRunning && !timerPaused) {
         const remainingTime = calculateRemainingTime();
         const minutes = Math.ceil(remainingTime / 60);
-        chrome.action.setBadgeText({ text: `${minutes}` });
+        chrome.action.setBadgeText({ text: `${minutes} m` });
         chrome.action.setBadgeBackgroundColor({ color: currentMode === 'work' ? '#3498db' : '#2ecc71' });
     } else {
         chrome.action.setBadgeText({ text: '' });
@@ -707,7 +756,6 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     await saveState();
                     updatePopup(); // Broadcast updated state including new blacklist
                     // No direct sendResponse here. Popup will update via updatePopup.
-                    // This was the source of the "message port closed" error for add/remove.
                 } else {
                     // If site already exists, we can still send a response to indicate this
                     sendResponse({ success: false, message: 'Site already exists.' });
