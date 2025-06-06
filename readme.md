@@ -18,7 +18,7 @@ It is a personal project, which I created because of 2 reasons:
   c. Ability to adjust work and break durations. TBH, most extensions already had this feature.
   d. A decent looking UI
 
-  I count not find any extension that had all of these features.
+  I could not find any extension that had all of these features.
 
   2. When I settled for some extensions, they were asking for permissions that were something like 'This extension and READ and MODIFY the data on any website". I was not comfortable with this.
   Adding to my skeptism was the disclaimer on the web store that Chrome had ot verified these extensions.

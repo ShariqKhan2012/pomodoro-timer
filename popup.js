@@ -101,21 +101,12 @@ document.addEventListener('DOMContentLoaded', () => {
             removeButton.textContent = 'Remove';
             removeButton.className = 'remove-button';
             removeButton.addEventListener('click', () => {
-                // Send message to background to remove site
+                // Send message to background to remove site (no direct response expected, UI updates via broadcast)
                 chrome.runtime.sendMessage({
                     action: 'removeBlacklistSite',
                     site: site
-                }, (response) => {
-                    if (response && response.success) {
-                        currentTimerState.blacklist = response.blacklist;
-                        renderBlacklist();
-                    } else {
-                        console.error("Pomodoro Popup: Failed to confirm remove site from background:", response);
-                        alert('Failed to remove site. Check console for details.');
-                    }
-                    if (chrome.runtime.lastError) {
-                         console.error("Pomodoro Popup: chrome.runtime.lastError for removeBlacklistSite:", chrome.runtime.lastError.message);
-                    }
+                }).catch(error => {
+                    console.error("Pomodoro Popup: Error sending removeBlacklistSite message:", error);
                 });
             });
             li.appendChild(removeButton);
@@ -175,7 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
             workDurationInput.value = currentTimerState.workDuration / 60;
             breakDurationInput.value = currentTimerState.breakDuration / 60;
             updateUI();
-            renderBlacklist();
+            renderBlacklist(); // Render blacklist on initial load
 
             // Start local popup timer if the background timer is running and not paused
             if (currentTimerState.isRunning && !currentTimerState.isPaused) {
@@ -194,7 +185,6 @@ document.addEventListener('DOMContentLoaded', () => {
     startButton.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'startTimer' }).catch(error => {
             console.error("Pomodoro Popup: Error sending startTimer message:", error);
-            // alert("An error occurred while starting timer. Check console for details."); // Removed alert for cleaner UX
         });
     });
 
@@ -202,14 +192,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = currentTimerState.isPaused ? 'resumeTimer' : 'pauseTimer';
         chrome.runtime.sendMessage({ action: action }).catch(error => {
             console.error("Pomodoro Popup: Error sending pause/resume message:", error);
-            // alert("An error occurred while pausing/resuming timer. Check console for details."); // Removed alert for cleaner UX
         });
     });
 
     stopButton.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'stopTimer' }).catch(error => {
             console.error("Pomodoro Popup: Error sending stopTimer message:", error);
-            // alert("An error occurred while stopping timer. Check console for details."); // Removed alert for cleaner UX
         });
     });
 
@@ -238,19 +226,12 @@ document.addEventListener('DOMContentLoaded', () => {
     addSiteButton.addEventListener('click', () => {
         const site = blacklistInput.value.trim();
         if (site) {
-            chrome.runtime.sendMessage({ action: 'addBlacklistSite', site: site }, (response) => {
-                if (response && response.success) {
-                    currentTimerState.blacklist = response.blacklist;
-                    renderBlacklist();
-                    blacklistInput.value = '';
-                } else {
-                    console.error("Pomodoro Popup: Failed to confirm add site from background:", response);
-                    alert('Failed to add site or site already exists. Check console for details.');
-                }
-                if (chrome.runtime.lastError) {
-                    console.error("Pomodoro Popup: chrome.runtime.lastError for addBlacklistSite:", chrome.runtime.lastError.message);
-                }
-            });
+            // No direct response expected. UI will update via updatePopup broadcast from background.
+            chrome.runtime.sendMessage({ action: 'addBlacklistSite', site: site })
+                .catch(error => {
+                    console.error("Pomodoro Popup: Error sending addBlacklistSite message:", error);
+                });
+            blacklistInput.value = ''; // Clear input immediately for better UX
         }
     });
 
@@ -260,6 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Pomodoro Popup: Received updatePopup message:", request.state);
             currentTimerState = { ...currentTimerState, ...request.state };
             updateUI();
+            renderBlacklist(); // <-- CRITICAL FIX: Call renderBlacklist here to refresh UI
+
             // If the background script signals a running timer, ensure local timer is active
             if (currentTimerState.isRunning && !currentTimerState.isPaused) {
                 startPopupTimer();
@@ -268,13 +251,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             // Acknowledge receipt of the message
             if (sendResponse) sendResponse({ success: true });
-        } else if (request.action === 'updateBlacklist') {
-            console.log("Pomodoro Popup: Received updateBlacklist message:", request.blacklist);
-            currentTimerState.blacklist = request.blacklist;
-            renderBlacklist();
-            // Acknowledge receipt of the message
-            if (sendResponse) sendResponse({ success: true });
         }
+        // Removed the 'else if (request.action === 'updateBlacklist')' as it's now redundant
         return true; // Indicate that the response might be sent asynchronously
     });
 

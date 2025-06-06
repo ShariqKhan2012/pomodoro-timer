@@ -508,7 +508,7 @@ async function injectContentScriptAndApplyOverlay(tabId, url) {
         return;
     }
 
-    // Only apply overlay if timer is running, not paused, in work mode, and blockingMode is 'cover'
+    // Only apply overlay if timerM running, not paused, in work mode, and blockingMode is 'cover'
     if (timerRunning && !timerPaused && currentMode === 'work' && blockingMode === 'cover' && isUrlBlacklistedForContentScript(url)) {
         try {
             // Ensure the content script is injected
@@ -639,7 +639,7 @@ function updateBadge() {
     if (timerRunning && !timerPaused) {
         const remainingTime = calculateRemainingTime();
         const minutes = Math.ceil(remainingTime / 60);
-        chrome.action.setBadgeText({ text: `${minutes} m` });
+        chrome.action.setBadgeText({ text: `${minutes}` });
         chrome.action.setBadgeBackgroundColor({ color: currentMode === 'work' ? '#3498db' : '#2ecc71' });
     } else {
         chrome.action.setBadgeText({ text: '' });
@@ -648,7 +648,8 @@ function updateBadge() {
 
 // --- Message Listener from Popup ---
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-    let responseSent = false; // Flag to ensure sendResponse is called only once
+    // responseSent flag is now only needed for cases that still send a direct response (e.g., getTimerState, add/remove blacklist)
+    // For other actions, sendResponse is not called directly by the background script, as updatePopup handles UI sync.
 
     try {
         switch (request.action) {
@@ -664,28 +665,26 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     blacklist: blacklist,
                     blockingMode: blockingMode
                 });
-                responseSent = true;
-                break; // Handled by this case, no fallthrough to finally sendResponse for this specific action
+                return true; // Response sent for getTimerState
 
             case 'startTimer':
                 await startTimer();
-                // responseSent is not set here because popup.js no longer expects a direct response for this action
-                // Instead, updatePopup() broadcast will handle UI updates.
+                // No direct sendResponse here. updatePopup() handles UI updates.
                 break;
 
             case 'pauseTimer':
                 await pauseTimer();
-                // responseSent is not set here because popup.js no longer expects a direct response for this action
+                // No direct sendResponse here. updatePopup() handles UI updates.
                 break;
 
             case 'resumeTimer':
                 await resumeTimer();
-                // responseSent is not set here because popup.js no longer expects a direct response for this action
+                // No direct sendResponse here. updatePopup() handles UI updates.
                 break;
 
             case 'stopTimer':
                 await stopTimer();
-                // responseSent is not set here because popup.js no longer expects a direct response for this action
+                // No direct sendResponse here. updatePopup() handles UI updates.
                 break;
 
             case 'saveSettings':
@@ -697,9 +696,8 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                     initialModeDuration = workDuration;
                 }
                 await saveState();
-                // updatePopup() is called within the action handlers, so no need here again.
-                // It will broadcast the updated state.
-                // responseSent is not set here because popup.js no longer expects a direct response for this action
+                updatePopup(); // Explicitly broadcast state after saving settings
+                // No direct sendResponse here.
                 break;
 
             case 'addBlacklistSite':
@@ -707,21 +705,29 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
                 if (!blacklist.includes(newSite)) {
                     blacklist.push(newSite);
                     await saveState();
-                    // updatePopup() is called within the action handlers, so no need here again.
-                    sendResponse({ success: true, blacklist: blacklist });
+                    updatePopup(); // Broadcast updated state including new blacklist
+                    // No direct sendResponse here. Popup will update via updatePopup.
+                    // This was the source of the "message port closed" error for add/remove.
                 } else {
+                    // If site already exists, we can still send a response to indicate this
                     sendResponse({ success: false, message: 'Site already exists.' });
+                    return true; // Indicate response sent
                 }
-                responseSent = true; // For add/remove, we still send a direct response
                 break;
 
             case 'removeBlacklistSite':
                 const siteToRemove = request.site;
+                const initialLength = blacklist.length;
                 blacklist = blacklist.filter(site => site !== siteToRemove);
-                await saveState();
-                // updatePopup() is called within the action handlers, so no need here again.
-                sendResponse({ success: true, blacklist: blacklist });
-                responseSent = true; // For add/remove, we still send a direct response
+                if (blacklist.length < initialLength) { // Site was actually removed
+                    await saveState();
+                    updatePopup(); // Broadcast updated state including new blacklist
+                    // No direct sendResponse here. Popup will update via updatePopup.
+                } else {
+                    // Site not found, can send a response to indicate this
+                    sendResponse({ success: false, message: 'Site not found.' });
+                    return true; // Indicate response sent
+                }
                 break;
 
             // 'updatePopup' and 'updateBlacklist' are messages *received* from background,
@@ -730,21 +736,19 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             // The background's onMessage listener doesn't need to handle sending responses for these.
             default:
                 console.warn("Pomodoro: Unknown action received:", request.action);
+                // For unknown actions, still send a response to prevent port closure on the sender side
                 sendResponse({ success: false, error: "Unknown action" });
-                responseSent = true;
-                break;
+                return true; // Indicate response sent
         }
     } catch (error) {
         console.error("Pomodoro: Error in runtime.onMessage listener for action:", request.action, error);
-        // Only send error response if one hasn't been sent already by a specific case
-        if (!responseSent) {
+        // Ensure a response is sent even on error, unless already handled by a specific case
+        if (request.action !== 'getTimerState' && request.action !== 'addBlacklistSite' && request.action !== 'removeBlacklistSite') { // only for actions that don't already send a direct response
             sendResponse({ success: false, error: error.message });
-            responseSent = true;
         }
     }
-    // Return true to indicate that sendResponse will be called asynchronously.
-    // This is crucial. If a response was sent in a case, responseSent will be true.
-    // If not, and we fall through to default, it will be handled there.
+    // For actions where sendResponse is explicitly called (like getTimerState, add/remove, and default),
+    // or implicitly handled by updatePopup broadcast for other actions, we return true.
     return true; 
 });
 
