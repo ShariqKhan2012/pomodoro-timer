@@ -16,7 +16,7 @@ let blacklist = [
     "tiktok.com",
     "reddit.com"
 ];
-let blockingMode = 'redirect'; // 'redirect' or 'cover'
+let blockingMode = 'cover'; // 'redirect' or 'cover'
 
 let backgroundTimerInterval; // New variable for the background script's timer interval
 
@@ -145,7 +145,7 @@ async function loadState() {
             "youtube.com", "facebook.com", "twitter.com", "instagram.com",
             "linkedin.com", "tiktok.com", "reddit.com"
         ];
-        blockingMode = data.blockingMode !== undefined ? data.blockingMode : 'redirect';
+        blockingMode = data.blockingMode !== undefined ? data.blockingMode : 'cover';
 
         const calculatedRemainingTime = calculateRemainingTime();
         console.log("Pomodoro: loadState - currentMode:", currentMode, "timerRunning:", timerRunning, "timerPaused:", timerPaused, "initialModeDuration:", initialModeDuration, "timerModeStartTime:", timerModeStartTime, "calculatedRemainingTime:", calculatedRemainingTime);
@@ -836,7 +836,7 @@ chrome.runtime.onInstalled.addListener(() => {
         }
 
         if (data.blockingMode === undefined) {
-            await chrome.storage.local.set({ blockingMode: 'redirect' });
+            await chrome.storage.local.set({ blockingMode: 'cover' });
         }
         loadState();
     });
